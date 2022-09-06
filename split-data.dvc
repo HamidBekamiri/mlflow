@@ -1,0 +1,5 @@
+outs:
+- md5: 276bd1511dc2c19aa3bd01368dadc8d9.dir
+  size: 27909036
+  nfiles: 3
+  path: split-data
