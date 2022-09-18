@@ -1,3 +1,4 @@
+from sqlite3 import DatabaseError
 import pandas as pd
 import nltk 
 nltk.download("stopwords")
@@ -5,8 +6,8 @@ from nltk.corpus import stopwords
 import string 
 import re
 # tracker 
-#from dagshub import dagshub_logger, DAGsHubLogger 
 import mlflow 
+from mlflow.tracking.client import MlflowClient
 # vectorize words 
 from sklearn.feature_extraction.text import CountVectorizer  
 import os
@@ -67,7 +68,6 @@ def remove_specific_chars(text):
 tweets_df = pd.read_csv("split-data/X_train.csv")
 target_df = pd.read_csv("split-data/y_train.csv")
 # PREPROCESS
-
 # drop the info we're not going to use 
 # id, date, flag 
 tweets_df.drop(columns=['ids', 'date', 'flag'], inplace=True)
@@ -108,28 +108,37 @@ print(os.environ.get("MLFLOW_TRACKING_URI"))
 print(os.environ.get("MLFLOW_TRACKING_USERNAME"))
 print(os.environ.get("MLFLOW_TRACKING_PASSWORD"))
 print(os.environ)
-
-print("Set up mlflow tracking uri")
-mlflow.set_tracking_uri(mlflow_tracking_uri)
-
+# set up a client
+mlflow_client = MlflowClient(tracking_uri=mlflow_tracking_uri)
 # MODELLING 
 classifier = MultinomialNB() 
 model_name = "NaiveBayes"
 run_name = "NB_model"
+exp_name = "FirstSentimentTest"
+try:
+    print("setting up experiment ")
+    experiment = mlflow.create_experiment(name = exp_name)
+    experiment_id = experiment.experiment_id
+except:
+    experiment = mlflow_client.get_experiment_by_name(exp_name)
+    experiment_id = experiment.experiment_id
+
+
+print("Set up mlflow tracking uri")
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 # context manager for basic logging 
 # use mlflow for experiment tracking
-with mlflow.start_run():
+with mlflow.start_run(experiment_id=experiment_id,
+                    run_name=run_name,
+                    nested=False,):
     print("Autlog")
-    mlflow.sklearn.autolog(registered_model_name=model_name)
-    # log model's parameters 
-
-    logger.log_hyperparams(model_class=type(classifier).__name__)
-    logger.log_hyperparams({"NaiveBayes": classifier.get_params()})
-    classifier.fit(X_train, target_df.values.ravel())
-    y_pred = classifier.predict_proba(X_train)[:,1]
-    fpr, tpr, thresholds = roc_curve(target_df.values.ravel(), y_pred)
+    mlflow.sklearn.autolog(log_models=True,log_input_examples=True,log_model_signatures=True, )
+    classifier.fit(X_train, y_train)
+    y_pred = classifier.predict(X_valid)
+    fpr, tpr, thresholds = roc_curve(y_valid, y_pred)
     roc_auc = auc(fpr, tpr)
     print(roc_auc)
-    logger.log_metrics({f'Training AUC':roc_auc})
+    mlflow.sklearn.log_model(sk_model=classifier, artifact_path="model")
+
 
 mlflow.end_run()
