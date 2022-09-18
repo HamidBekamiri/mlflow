@@ -13,7 +13,7 @@ import os
 import sys
 # naive bayes 
 from sklearn.naive_bayes import MultinomialNB 
-from sklearn.metrics import auc, roc_curve, ConfusionMatrixDisplay
+from sklearn.metrics import auc, roc_curve
 # train test split 
 from sklearn.model_selection import train_test_split
 
@@ -123,18 +123,13 @@ with mlflow.start_run():
     mlflow.sklearn.autolog(registered_model_name=model_name)
     # log model's parameters 
 
-    #logger.log_hyperparams(model_class=type(classifier).__name__)
-    #logger.log_hyperparams({"NaiveBayes": classifier.get_params()})
+    logger.log_hyperparams(model_class=type(classifier).__name__)
+    logger.log_hyperparams({"NaiveBayes": classifier.get_params()})
     classifier.fit(X_train, target_df.values.ravel())
     y_pred = classifier.predict_proba(X_train)[:,1]
     fpr, tpr, thresholds = roc_curve(target_df.values.ravel(), y_pred)
     roc_auc = auc(fpr, tpr)
     print(roc_auc)
-    #logger.log_metrics({f'Training AUC':roc_auc})
+    logger.log_metrics({f'Training AUC':roc_auc})
 
-    #ConfusionMatrixDisplay.from_estimator(classifier, X_train, target_df.values.ravel(), 
-    #                                     display_labels=["1", "0"],
-    #                                     )
-    
-    #logger.log_artifact() save
 mlflow.end_run()
