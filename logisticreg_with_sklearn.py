@@ -14,19 +14,32 @@ from mlflow.tracking.client import MlflowClient
 from sklearn.base import BaseEstimator, TransformerMixin
 # pipeline 
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
 # vectorize words 
-from sklearn.feature_extraction.text import CountVectorizer  
+from sklearn.feature_extraction.text import TfidfVectorizer  
 import os
 import sys
-# naive bayes 
-from sklearn.naive_bayes import MultinomialNB 
+# logistic regression
+from sklearn.linear_model import LogisticRegression 
 # train test split 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import confusion_matrix, classification_report
 # logging
 import logging 
 logger = logging.getLogger(__name__)
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+from scipy.sparse import hstack
+from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.model_selection import KFold
+from scipy.sparse import hstack
+from scipy.sparse import coo_matrix, csr_matrix
+from tqdm import tqdm
+import gc
+from contextlib import contextmanager
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 
 STOPWORDS = stopwords.words("english")
 
@@ -75,14 +88,11 @@ def get_model():
     r""" this function can be further personalized with a given 
     input for th especific model we want
     """
-    classifier = MultinomialNB() 
+    classifier = LogisticRegression(C=1, solver='sag') 
     return classifier 
 
 
-def training_process( input_dataset: pd.DataFrame,
-                      input_target: pd.DataFrame, 
-                      raw_data: pd.DataFrame
-                    ):
+def training_process():
     r""" Full function to run the preprocess and training 
     """
     # retrieve  the model 
@@ -90,7 +100,16 @@ def training_process( input_dataset: pd.DataFrame,
     # create the pipeline
     training_pipeline = Pipeline(steps=[
         ("clean", PreprocessTweets("text")), 
-        ("countVectorizer", CountVectorizer()), 
+        ("countVectorizer", TfidfVectorizer(ngram_range=(1,4),
+                                            min_df=3,
+                                            max_df=0.9,
+                                            use_idf=True,
+                                            smooth_idf=True,
+                                            sublinear_tf=True,
+                                            analyzer='word',
+                                            token_pattern=r'\w{1,}',
+                                            max_features=50000)
+                                            ), 
         ("trainModel", classifier)
         ]
     )
@@ -131,9 +150,9 @@ print(os.environ)
 print("Set up mlflow tracking uri")
 # TOOD SET UP EXPERIMETNS AND DO NOT USE THE CONTEXT MANAGER
 mlflow_client = MlflowClient(tracking_uri=mlflow_tracking_uri)
-model_name = "NaiveBayes"
-run_name = "NB_model"
-experiment_family = "SentimentClassification_DG3"
+model_name = "LogisticRegression"
+run_name = "LG_model"
+experiment_family = "LogisticReg"
 try:
     print("setting up experiment ")
     experiment = mlflow.create_experiment(name = experiment_family)
@@ -153,7 +172,7 @@ starter = mlflow.start_run(experiment_id=experiment_id,
 print('artifact uri:', mlflow.get_artifact_uri())
 # set the autolog 
 mlflow.sklearn.autolog(log_models=True,log_input_examples=True,log_model_signatures=True, )
-trained_model = training_process(X_train, y_train, tweets_df)#['text'])
+trained_model = training_process()
 trained_model.fit(X_train, y_train)
 y_pred = trained_model.predict(X_valid)
 report = classification_report(

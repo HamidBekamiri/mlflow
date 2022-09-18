@@ -14,19 +14,36 @@ from mlflow.tracking.client import MlflowClient
 from sklearn.base import BaseEstimator, TransformerMixin
 # pipeline 
 from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
 # vectorize words 
-from sklearn.feature_extraction.text import CountVectorizer  
+from sklearn.feature_extraction.text import TfidfVectorizer  
 import os
 import sys
-# naive bayes 
-from sklearn.naive_bayes import MultinomialNB 
+# random forest
+from sklearn.ensemble import RandomForestClassifier
 # train test split 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import confusion_matrix, classification_report
+# numpy 
+import numpy as np 
+# matplot lib 
+import matplotlib.pyplot as plt
 # logging
 import logging 
 logger = logging.getLogger(__name__)
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score
+from scipy.sparse import hstack
+from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.model_selection import KFold
+from scipy.sparse import hstack
+from scipy.sparse import coo_matrix, csr_matrix
+from tqdm import tqdm
+import gc
+from contextlib import contextmanager
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
 
 STOPWORDS = stopwords.words("english")
 
@@ -75,14 +92,11 @@ def get_model():
     r""" this function can be further personalized with a given 
     input for th especific model we want
     """
-    classifier = MultinomialNB() 
+    classifier = RandomForestClassifier(n_estimators=50, random_state=0)
     return classifier 
 
 
-def training_process( input_dataset: pd.DataFrame,
-                      input_target: pd.DataFrame, 
-                      raw_data: pd.DataFrame
-                    ):
+def training_process():
     r""" Full function to run the preprocess and training 
     """
     # retrieve  the model 
@@ -90,7 +104,14 @@ def training_process( input_dataset: pd.DataFrame,
     # create the pipeline
     training_pipeline = Pipeline(steps=[
         ("clean", PreprocessTweets("text")), 
-        ("countVectorizer", CountVectorizer()), 
+        ("countVectorizer", TfidfVectorizer(ngram_range=(1,4),
+                                            use_idf=True,
+                                            smooth_idf=True,
+                                            sublinear_tf=True,
+                                            analyzer='word',
+                                            token_pattern=r'\w{1,}',
+                                            max_features=1000)
+                                            ), 
         ("trainModel", classifier)
         ]
     )
@@ -108,12 +129,18 @@ target_df = pd.read_csv("split-data/y_train.csv")
 # PREPROCESS
 
 # drop the info we're not going to use  id, date, flag 
-tweets_df.drop(columns=['ids', 'date', 'flag'], inplace=True)
-
+tweets_df.drop(columns=['user','ids', 'date', 'flag'], inplace=True)
+tweets_df.reset_index(drop=True, inplace=True)
 # train/test split
 X_train, X_valid, y_train, y_valid = train_test_split(
         tweets_df, target_df['sentiment'], train_size=0.75
     )
+print("splits")
+print(X_train)
+print(X_valid)
+print(y_train)
+print(y_valid)
+print("Shape")
 print(len(X_train), len(X_valid), len(y_train), len(y_valid))
 # setup MLflow
 ifile = open("setup_mlflow.txt", "r").readlines()
@@ -131,9 +158,9 @@ print(os.environ)
 print("Set up mlflow tracking uri")
 # TOOD SET UP EXPERIMETNS AND DO NOT USE THE CONTEXT MANAGER
 mlflow_client = MlflowClient(tracking_uri=mlflow_tracking_uri)
-model_name = "NaiveBayes"
-run_name = "NB_model"
-experiment_family = "SentimentClassification_DG3"
+model_name = "RandomForest"
+run_name = "RF_model"
+experiment_family = "RandomForest"
 try:
     print("setting up experiment ")
     experiment = mlflow.create_experiment(name = experiment_family)
@@ -153,8 +180,9 @@ starter = mlflow.start_run(experiment_id=experiment_id,
 print('artifact uri:', mlflow.get_artifact_uri())
 # set the autolog 
 mlflow.sklearn.autolog(log_models=True,log_input_examples=True,log_model_signatures=True, )
-trained_model = training_process(X_train, y_train, tweets_df)#['text'])
+trained_model = training_process()
 trained_model.fit(X_train, y_train)
+
 y_pred = trained_model.predict(X_valid)
 report = classification_report(
         y_valid, y_pred, output_dict=True
