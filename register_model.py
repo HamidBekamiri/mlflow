@@ -1,7 +1,6 @@
 import mlflow 
 import os 
-import mlflow.sagemaker as mfs
-
+import mlflow.sagemaker
 
 ifile = open("setup_mlflow.txt", "r").readlines()
 mlflow_tracking_uri = ifile[0].split("=")[1].strip()
